@@ -1,4 +1,4 @@
-# Port Super TOC module to drupal 8
+# Port Super TOC module to Drupal 8
 
 Original module for d7: https://www.drupal.org/sandbox/dillix/2501087
 
