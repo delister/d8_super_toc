@@ -1,0 +1,27 @@
+super_toc_admin:
+  version: 1.x
+  css:
+    theme:
+      css/super_toc.admin.css: {}
+super_toc:
+  version: 1.x
+  css:
+    theme:
+      css/super_toc.css: {}
+  js:
+    js/super_toc.js: {}
+  dependencies:
+    - core/jquery
+    - core/jquery.once
+    - core/jquery.cookie
+jquery-smooth-scroll:
+  remote: https://github.com/kswedberg/jquery-smooth-scroll
+  version: 1.4.10
+  license:
+    name: MIT
+    url: https://github.com/kswedberg/jquery-smooth-scroll/blob/master/LICENSE-MIT
+    gpl-compatible: true
+  js:
+    https://cdnjs.cloudflare.com/ajax/libs/jquery-smooth-scroll/1.4.10/jquery.smooth-scroll.min.js: { type: external, minified: true }
+  dependencies:
+    - core/jquery

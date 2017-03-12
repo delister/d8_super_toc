@@ -1,0 +1,5 @@
+name: Super TOC
+type: module
+description: Table of contents for drupal
+core: 8.x
+package: Custom

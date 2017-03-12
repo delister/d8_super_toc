@@ -1,0 +1,14 @@
+{
+  "name": "drupal/super_toc",
+  "type": "drupal-module",
+  "description": "Table of contents for drupal",
+  "keywords": ["Drupal"],
+  "license": "GPL-2.0+",
+  "homepage": "https://www.drupal.org/project/super_toc",
+  "minimum-stability": "dev",
+  "support": {
+    "issues": "https://www.drupal.org/project/issues/super_toc",
+    "source": "http://cgit.drupalcode.org/super_toc"
+  },
+  "require": { }
+}

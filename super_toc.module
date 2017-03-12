@@ -1,0 +1,436 @@
+<?php
+
+/**
+ * @file
+ * The Super TOC Drupal module.
+ *
+ * @copyright GNU GPL
+ */
+
+define('SUPER_TOC_SMOOTH_SCROLL_MIN_PLUGIN_VERSION', '1.4.10');
+define('SUPER_TOC_POSITION_BEFORE', 1);
+define('SUPER_TOC_POSITION_AFTER', 2);
+define('SUPER_TOC_POSITION_TOP', 3);
+define('SUPER_TOC_POSITION_BOTTOM', 4);
+define('SUPER_TOC_MULTIVALUE_MODE_SINGLE', 1);
+define('SUPER_TOC_MULTIVALUE_MODE_MULTIPLE', 2);
+
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Entity\Display\EntityViewDisplayInterface;
+use Drupal\Component\Utility\Html;
+
+/**
+ * Implements hook_help().
+ */
+function super_toc_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    // Main module help for the super_toc module.
+    case 'help.page.super_toc':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('Table of contents for drupal') . '</p>';
+      return $output;
+
+    default:
+  }
+}
+
+
+/**
+ * Implements hook_entity_view().
+ */
+function super_toc_entity_view(array &$build, EntityInterface $entity, EntityViewDisplayInterface $display, $view_mode) {
+
+  if ($entity->getEntityTypeId() == 'node' && $view_mode == 'full') {
+    $config = \Drupal::config('super_toc.supertocadmin');
+    $type = $entity->bundle();
+
+    $nodetypes = array_filter($config->get('super_toc_nodetypes') ?: array());
+    if (isset($nodetypes[$type]) && !empty($nodetypes[$type])) {
+      // Activate TOC only for public & allowed nodes.
+
+      if (isset($entity->get('body')->getValue()[0])) {
+        $find = $replace = array();
+        $body = $entity->get('body')->getValue()[0]['value'];
+        $items = _super_toc_extract_headings($find, $replace, $body);
+        if($items) {
+          $css_classes = 'toc';
+          // Wrapping css classes.
+          if ($wrapping = $config->get('super_toc_wrapping') ?: '') {
+            $css_classes .= ' ' . $wrapping;
+          }
+
+          // Colour themes.
+          if ($theme = $config->get('super_toc_theme') ?: '') {
+            $css_classes .= ' ' . $theme;
+          }
+
+          // Bullets.
+          $default_value = $config->get('super_toc_bullet_spacing');
+          if (isset($default_value) ? $default_value : FALSE) {
+            $css_classes .= ' have_bullets';
+          }
+          else {
+            $css_classes .= ' no_bullets';
+          }
+
+          $css_classes = trim($css_classes);
+
+          // Add container, toc title and list items.
+          $toc = '<div id="toc_container" class="' . $css_classes . '">';
+
+          $toc_title = $config->get('super_toc_heading_text') ?: t('Contents');
+          $toc .= '<p class="toc_title">' . htmlentities($toc_title, ENT_COMPAT, 'UTF-8') . '</p>';
+
+          $toc .= '<ul class="toc_list">' . $items . '</ul></div>' . "\n";
+
+          // Wrap to noindex for Yandex search engine.
+          $toc = '<!--noindex-->' . $toc . '<!--/noindex-->';
+
+          $hide_text = $config->get('super_toc_visibility_hide') ?: t('hide');
+          $show_text = $config->get('super_toc_visibility_show') ?: t('show');
+
+          $default_value = $config->get('super_toc_visibility_hide_by_default');
+          $hide_by_default = isset($default_value) ? $default_value : FALSE;
+
+          $default_value = $config->get('super_toc_smooth_scroll');
+          $smooth_scroll = isset($default_value) ? $default_value : FALSE;
+
+          $default_value = $config->get('super_toc_smooth_scroll_offset');
+          $smooth_scroll_offset = isset($default_value) ? $default_value : 30;
+
+
+          // TOC Position.
+          $markup = '';
+          switch ($config->get('super_toc_position') ?: SUPER_TOC_POSITION_BEFORE) {
+            case SUPER_TOC_POSITION_TOP:
+              $markup = $toc . _super_toc_find_replace($find, $replace, $body);
+              break;
+
+            case SUPER_TOC_POSITION_BOTTOM:
+              $markup = _super_toc_find_replace($find, $replace, $body) . $toc;
+              break;
+
+            case SUPER_TOC_POSITION_AFTER:
+              $replace[0] = $replace[0] . $toc;
+              $markup = _super_toc_find_replace($find, $replace, $body);
+              break;
+
+            case SUPER_TOC_POSITION_BEFORE:
+            default:
+              $replace[0] = $toc . $replace[0];
+              $markup = _super_toc_find_replace($find, $replace, $body);
+          }
+
+          $build['body'][0]['#text'] = $markup;
+
+          $js_settings = [
+            'smooth_scroll' => $smooth_scroll,
+            'smooth_scroll_offset' => $smooth_scroll_offset,
+            'width' => 'auto',
+          ];
+
+          if ($config->get('super_toc_visibility')) {
+            $js_settings['visibility_show'] = Html::escape($show_text);
+            $js_settings['visibility_hide'] = Html::escape($hide_text);
+            if ($hide_by_default) {
+              $js_settings['visibility_hide_by_default'] = boolval($hide_by_default);
+            }
+          }
+
+
+//          $js_settings = array(
+//            'smooth_scroll' => $smooth_scroll,
+//            'smooth_scroll_offset' => $smooth_scroll_offset,
+//            'visibility_show' => Html::escape($show_text),
+//            'visibility_hide' => Html::escape($hide_text),
+//            'visibility_hide_by_default' => boolval($hide_by_default),
+//            'width' => 'auto',
+//          );
+
+          // Attach all assets to first field instance like D8 does.
+          $build['body']['#attached']['library'][] = 'system/jquery.coockie';
+          $build['body']['#attached']['drupalSettings']['super_toc'] = $js_settings;
+          $build['body']['#attached']['library'][] = 'super_toc/jquery-smooth-scroll';
+          $build['body']['#attached']['library'][] = 'super_toc/super_toc';
+
+
+
+        }
+      }
+    }
+  }
+
+}
+
+
+/**
+ * Multibyte safe find & replace function for arrays.
+ *
+ * @param array $find
+ *   Find.
+ * @param array $replace
+ *   Replace.
+ * @param string $string
+ *   Haystack.
+ */
+function _super_toc_find_replace(array &$find = NULL, array &$replace = NULL, &$string = '') {
+  if (is_array($find) && is_array($replace) && !empty($string)) {
+    // Check if multibyte strings are supported.
+    if (function_exists('mb_strpos')) {
+      for ($i = 0; $i < count($find); $i++) {
+        $string = mb_substr($string, 0, mb_strpos($string, $find[$i])) . $replace[$i] . mb_substr($string, mb_strpos($string, $find[$i]) + mb_strlen($find[$i]));
+      }
+    }
+    else {
+      for ($i = 0; $i < count($find); $i++) {
+        $string = substr_replace($string, $replace[$i], strpos($string, $find[$i]), strlen($find[$i]));
+      }
+    }
+  }
+
+  return $string;
+}
+
+/**
+ * Extract headings from text.
+ *
+ * @param array $find
+ *   Find.
+ * @param array $replace
+ *   Replace.
+ * @param string $content
+ *   Content.
+ * @param boolean $render
+ *   Render table of contents.
+ */
+function _super_toc_extract_headings(array &$find = NULL, array &$replace = NULL, $content = '', $render = FALSE) {
+  $matches = array();
+  $anchor = '';
+  $items = FALSE;
+  $config = \Drupal::config('super_toc.supertocadmin');
+
+  if (is_array($find) && is_array($replace) && !empty($content)) {
+    // Get all headings. Html spec allows for a maximum of 6 heading depths.
+    if (preg_match_all('/(<h([1-6]{1})[^>]*>).*<\/h\2>/msuU', $content, $matches, PREG_SET_ORDER)) {
+      // Remove undesired headings (if any) as defined by heading_levels.
+      $heading_levels_defaults = array(1, 2, 3, 4, 5, 6);
+      $heading_levels = array_filter($config->get('super_toc_heading_levels') ?: $heading_levels_defaults);
+      if (count($heading_levels) != 6) {
+        $new_matches = array();
+        for ($i = 0; $i < count($matches); $i++) {
+          if (in_array($matches[$i][2], $heading_levels)) {
+            $new_matches[] = $matches[$i];
+          }
+        }
+
+        $matches = $new_matches;
+      }
+
+      // Remove empty headings.
+      $new_matches = array();
+      for ($i = 0; $i < count($matches); $i++) {
+        if (trim(strip_tags($matches[$i][0])) != FALSE) {
+          $new_matches[] = $matches[$i];
+        }
+      }
+
+      if (count($matches) != count($new_matches)) {
+        $matches = $new_matches;
+      }
+
+      // Check minimum number of headings.
+      $start = $config->get('super_toc_start') ?: 4;
+
+      $default_value = $config->get('super_toc_show_hierarchy');
+      $show_hierarchy = isset($default_value) ? $default_value : TRUE;
+      $fragment_prefix = $config->get('super_toc_fragment_prefix') ?: 'i';
+      if (count($matches) >= $start) {
+        $default_value = $config->get('super_toc_hyphenate');
+        $anchor_options = array(
+          'fragment_prefix' => $fragment_prefix,
+          'hyphenate' => isset($default_value) ? $default_value : FALSE,
+        );
+
+        $anchors = array();
+        for ($i = 0; $i < count($matches); $i++) {
+          // Get anchor and add to find and replace arrays.
+          $anchor = _super_toc_url_anchor_target($matches[$i][0], $anchor_options);
+
+          // Is generated anchor unique?
+          if (in_array($anchor, $anchors)) {
+            for ($a = 1; $a < 100; $a++) {
+              if (!in_array($anchor . '_' . $a, $anchors)) {
+                $anchor = $anchor . '_' . $a;
+                $anchors[$i] = $anchor;
+                break;
+              }
+            }
+          }
+          else {
+            $anchors[$i] = $anchor;
+          }
+
+          $find[] = $matches[$i][0];
+          $replace[] = str_replace(
+            array(
+              $matches[$i][1],
+              '</h' . $matches[$i][2] . '>',
+            ),
+            array(
+              $matches[$i][1] . '<span id="' . $anchor . '">',
+              '</span></h' . $matches[$i][2] . '>',
+            ),
+            $matches[$i][0]
+          );
+
+          // Assemble flat list.
+          if (!$show_hierarchy) {
+            $items .= '<li><a href="#' . $anchor . '">';
+            $default_value = $config->get('super_toc_ordered_list');
+            $ordered_list = isset($default_value) ? $default_value : TRUE;
+            if ($ordered_list) {
+              $items .= count($replace) . ' ';
+            }
+            $items .= strip_tags($matches[$i][0]) . '</a></li>';
+          }
+          else {
+            $matches[$i][3] = $anchor;
+          }
+        }
+
+        /* Build a hierarchical toc? We could have tested for
+        $items but that var can be quite large in some cases */
+        if ($show_hierarchy) {
+          $items = _super_toc_build_hierarchy($matches);
+        }
+      }
+    }
+  }
+
+  return $items;
+}
+
+/**
+ * Build a hierarchical TOC.
+ *
+ * @param array $matches
+ *   Headings array.
+ */
+function _super_toc_build_hierarchy(array &$matches) {
+  $current_depth = 100;
+  $html = '';
+  $numbered_items = array();
+  $numbered_items_min = NULL;
+  $config = \Drupal::config('super_toc.supertocadmin');
+
+  // Find the minimum heading to establish our baseline.
+  for ($i = 0; $i < count($matches); $i++) {
+    if ($current_depth > $matches[$i][2]) {
+      $current_depth = (int) $matches[$i][2];
+    }
+  }
+
+  $numbered_items[$current_depth] = 0;
+  $numbered_items_min = $current_depth;
+
+  for ($i = 0; $i < count($matches); $i++) {
+    if ($current_depth == (int) $matches[$i][2]) {
+      $html .= '<li>';
+    }
+
+    // Start lists.
+    if ($current_depth != (int) $matches[$i][2]) {
+      for ($current_depth; $current_depth < (int) $matches[$i][2]; $current_depth++) {
+        $numbered_items[$current_depth + 1] = 0;
+        $html .= '<ul><li>';
+      }
+    }
+
+    // List item.
+    $heading_levels_defaults = array(1, 2, 3, 4, 5, 6);
+    $heading_levels = array_filter($config->get('super_toc_heading_levels') ?: $heading_levels_defaults);
+    if (in_array($matches[$i][2], $heading_levels)) {
+      $html .= '<a href="#' . $matches[$i][3] . '">';
+
+      $default_value = $config->get('super_toc_ordered_list');
+      $ordered_list = isset($default_value) ? $default_value : TRUE;
+      if ($ordered_list) {
+        // Attach leading numbers when lower in hierarchy.
+        $html .= '<span class="toc_number toc_depth_' . ($current_depth - $numbered_items_min + 1) . '">';
+        for ($j = $numbered_items_min; $j < $current_depth; $j++) {
+          $number = ($numbered_items[$j]) ? $numbered_items[$j] : 0;
+          $html .= $number . '.';
+        }
+
+        $html .= ($numbered_items[$current_depth] + 1) . '</span> ';
+        $numbered_items[$current_depth]++;
+      }
+      $html .= strip_tags($matches[$i][0]) . '</a>';
+    }
+
+    // End lists.
+    if ($i != count($matches) - 1) {
+      if ($current_depth > (int) $matches[$i + 1][2]) {
+        for ($current_depth; $current_depth > (int) $matches[$i + 1][2]; $current_depth--) {
+          $html .= '</li></ul>';
+          $numbered_items[$current_depth] = 0;
+        }
+      }
+
+      if ($current_depth == (int) @$matches[$i + 1][2]) {
+        $html .= '</li>';
+      }
+    }
+    else {
+      // This is the last item, make sure we close off all tags.
+      for ($current_depth; $current_depth >= $numbered_items_min; $current_depth--) {
+        $html .= '</li>';
+        if ($current_depth != $numbered_items_min) {
+          $html .= '</ul>';
+        }
+      }
+    }
+  }
+
+  return $html;
+}
+
+/**
+ * Add anchors to titles.
+ */
+function _super_toc_url_anchor_target($title, $options = array()) {
+  $return = FALSE;
+  $trans = Drupal::service('transliteration');
+
+  if ($title) {
+    // Cleanup & remove non alphanumeric chars.
+    $return = trim(strip_tags($title));
+    $return = str_replace(array("\r", "\n", "\n\r", "\r\n"), ' ', $return);
+    $return = str_replace('&amp;', '', $return);
+    $return = $trans->transliterate($return);
+    $return = preg_replace('/[^a-zA-Z0-9 \-_]*/', '', $return);
+    $return = str_replace(array('  ', ' '), '_', $return);
+    $return = rtrim($return, '-_');
+
+    // Lowercase everything?
+    if (isset($options['lowercase']) && $options['lowercase']) {
+      $return = strtolower($return);
+    }
+
+    /* If blank, then prepend with the fragment prefix blank anchors
+    normally appear on sites that don't use the latin charset */
+    if (!$return) {
+      $return = (isset($options['fragment_prefix']) && $options['fragment_prefix']) ? $options['fragment_prefix'] : '_';
+    }
+
+    // Hyphenate?
+    if (isset($options['hyphenate']) && $options['hyphenate']) {
+      $return = str_replace('_', '-', $return);
+      $return = str_replace('--', '-', $return);
+    }
+  }
+
+  return $return;
+}

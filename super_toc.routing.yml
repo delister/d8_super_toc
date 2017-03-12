@@ -1,0 +1,11 @@
+
+super_toc.super_toc_admin_form:
+  path: '/admin/config/content/super_toc'
+  defaults:
+    _form: '\Drupal\super_toc\Form\SuperTocAdminForm'
+    _title: 'Super TOC'
+  requirements:
+    _permission: 'access administration pages'
+  options:
+    _admin_route: TRUE
+

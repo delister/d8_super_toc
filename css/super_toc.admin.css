@@ -1,0 +1,16 @@
+.form-item-super-toc-visibility-show,
+.form-item-super-toc-visibility-hide,
+.form-item-super-toc-visibility-hide-by-default {
+  margin-left: 25px !important;
+}
+
+.form-item-super-toc-theme .form-item {
+  float: left;
+  width: 200px;
+  margin-right: 5px !important;
+}
+
+.form-item-super-toc-theme .form-item p {
+  margin-top: 5px;
+  margin-bottom: 5px;
+}

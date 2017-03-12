@@ -1,0 +1,7 @@
+super_toc.super_toc_admin_form:
+  title: 'Super TOC'
+  route_name: super_toc.super_toc_admin_form
+  description: 'Adjust settings for Super TOC module.'
+  parent: system.admin_config_content
+  weight: 99
+
